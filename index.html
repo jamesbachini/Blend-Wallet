@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blend Web Wallet</title>
+  <!-- Stellar SDK - same version used in both functionalities -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stellar-sdk/13.1.0/stellar-sdk.min.js"></script>
+  <!-- Blend SDK bundle - adjust path as needed -->
+  <script src="dist/bundle.js"></script>
+  <style>
+    /* Global Styles */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      background-color: rgb(39,42,42);
+      color: #CCC;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+    }
+    h1, h2 {
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+    /* Container styling */
+    .wallet-container {
+      background-color: #222;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border-radius: 10px;
+      padding: 1.5rem;
+      max-width: 500px;
+      width: 100%;
+      margin-bottom: 2rem;
+    }
+    .wallet-section {
+      margin-bottom: 1.5rem;
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      margin-bottom: 0.5rem;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #36b04a80;
+      color: #fff;
+      border: none;
+      padding: 0.65rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #4a64a7;
+    }
+    .btn-secondary {
+      background-color: #6c757d;
+    }
+    .btn-secondary:hover {
+      background-color: #5a6268;
+    }
+    .small-link {
+      font-size: 0.85rem;
+      color: #007bff;
+      cursor: pointer;
+      margin-left: 0.5rem;
+      text-decoration: underline;
+    }
+    .key-info {
+      word-break: break-all;
+      background: #131313;
+      border-radius: 5px;
+      padding: 0.5rem;
+      font-family: monospace;
+      font-size: 0.9rem;
+    }
+    .flex-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .balance-item {
+      background: #131313;
+      border-radius: 5px;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+      text-align: center;
+      flex: 1;
+    }
+    /* Responsive adjustments */
+    @media(max-width: 600px) {
+      .flex-row {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Blend Web Wallet</h1>
+  
+  <div class="wallet-container" id="walletContainer">
+    <!-- If no address exists, show generate button -->
+    <div id="generateSection" class="wallet-section">
+      <p>No wallet address found.</p>
+      <button id="generateAddress">Generate Address</button>
+    </div>
+    
+    <!-- Wallet Info and Actions (hidden until generated) -->
+    <div id="walletDetails" style="display:none;">
+      <!-- Address Display -->
+      <div class="wallet-section">
+        <p><strong>Public Key:</strong></p>
+        <div class="key-info" id="publicKeyDisplay"></div>
+        <br />
+        <button onclick="copyText('publicKeyDisplay')">Copy Public Key</button>
+        <div class="key-info" id="privateKeyDisplay" style="display:none;"></div>
+        <button id="togglePrivateBtn">Show Private Key</button>
+      </div>
+      
+      <!-- Balance Section -->
+      <div class="wallet-section">
+        <h2>Balances</h2>
+        <div class="flex-row">
+          <div class="balance-item">
+            <p>XLM</p>
+            <p id="xlmBalance">0</p>
+          </div>
+          <div class="balance-item">
+            <p>USDC</p>
+            <p id="usdcBalance">0</p>
+          </div>
+        </div>
+        <button id="refreshBalance">Refresh Balance</button>
+      </div>
+      
+      <!-- Deposit Section -->
+      <div class="wallet-section">
+        <h2>Deposit to Blend</h2>
+        <label for="depositAmount">Amount to deposit</label>
+        <div class="flex-row" style="align-items: center;">
+          <input type="number" id="depositAmount" placeholder="Enter deposit amount" min="0" style="flex:1;" />
+          <span class="small-link" id="maxLink">max</span>
+        </div>
+        <button id="depositButton">Deposit Funds</button>
+      </div>
+      
+      <!-- Withdraw Section -->
+      <div class="wallet-section">
+        <h2>Withdraw from Blend</h2>
+        <p>This will withdraw all funds you have deposited.</p>
+        <button id="withdrawButton" class="btn-secondary">Withdraw All</button>
+      </div>
+
+      <button id="deleteButton" class="btn">Delete Wallet</button>
+    </div>
+  </div>
+  
+  <script>
+    let network = 'TESTNET';
+    const networkPassphrase = network === 'TESTNET'
+      ? StellarSdk.Networks.TESTNET
+      : StellarSdk.Networks.PUBLIC;
+    const poolContract = "CCHZKMVGSP3N4YEHD4EFHA6UKND5NDVP4COTAFENAFMPRNTEC2U2ST5F";
+    const xlmContract = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+    const usdcContract = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
+    const rpcURL = network === 'TESTNET'
+      ? 'https://soroban-testnet.stellar.org'
+      : 'https://mainnet.sorobanrpc.com';
+    const rpc = new StellarSdk.rpc.Server(rpcURL);
+    let wallet = loadWallet();
+
+
+    function saveWallet(wallet) {
+      localStorage.setItem('stellarWallet', JSON.stringify(wallet));
+    }
+    // Load wallet data from localStorage
+    function loadWallet() {
+      return JSON.parse(localStorage.getItem('stellarWallet'));
+    }
+
+    function deleteWallet() {
+        localStorage.removeItem('stellarWallet');
+    }
+    // Copy text from an element by id
+    function copyText(elementId) {
+      const text = document.getElementById(elementId).innerText;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+          alert('Copied to clipboard!');
+        });
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          alert('Copied to clipboard!');
+        } catch (err) {
+          alert('Error copying text: ' + err);
+        }
+        document.body.removeChild(textArea);
+      }
+    }
+
+    function fundAddress(publicKey) {
+      const url = `https://friendbot.stellar.org/?addr=${publicKey}`;
+      fetch(url)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to fund account, status ' + response.status);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log(`Address funded successfully!\nResponse: ${JSON.stringify(data)}`);
+        })
+        .catch(err => {
+          console.error('Error funding address', err);
+        });
+    }
+    
+    function renderWallet() {
+      if (!wallet) return;
+      document.getElementById('generateSection').style.display = 'none';
+      document.getElementById('walletDetails').style.display = 'block';
+      document.getElementById('publicKeyDisplay').innerText = wallet.publicKey;
+      document.getElementById('privateKeyDisplay').innerText = wallet.secret;
+    }
+    
+    document.getElementById('generateAddress').addEventListener('click', () => {
+      const keypair = StellarSdk.Keypair.random();
+      wallet = {
+        publicKey: keypair.publicKey(),
+        secret: keypair.secret()
+      };
+      saveWallet(wallet);
+      fundAddress(wallet.publicKey);
+      renderWallet();
+    });
+    
+    document.getElementById('togglePrivateBtn').addEventListener('click', function() {
+      const pkDisplay = document.getElementById('privateKeyDisplay');
+      if (pkDisplay.style.display === 'none') {
+        pkDisplay.style.display = 'block';
+        this.innerText = 'Hide Private Key';
+      } else {
+        pkDisplay.style.display = 'none';
+        this.innerText = 'Show Private Key';
+      }
+    });
+
+    async function getTokenBalance(contractId, publicKey) {
+        const contract = new StellarSdk.Contract(contractId);
+
+        try {
+            const result = await rpc.simulateTransaction({
+                contractId: contractId,
+                function: 'balance',
+                args: [new StellarSdk.Account(accountId).toScVal()],
+                networkPassphrase,
+            });
+            const balanceScVal = result.result?.retval;
+            if (!balanceScVal) throw new Error('No return value from contract simulation');
+            const balance = balanceScVal.toBigInt();
+            return balance;
+        } catch (err) {
+            console.error(`Error getting balance from ${contractId}:`, err);
+            return null;
+        }
+    }
+
+    document.getElementById('refreshBalance').addEventListener('click', async () => {
+      if (!wallet) {
+        alert("Please generate an address first.");
+        return;
+      }
+      try {
+        const xlmBalance = await getTokenBalance(xlmContract, wallet.publicKey);
+        const usdcBalance = await getTokenBalance(usdcContract, wallet.publicKey);
+        document.getElementById('xlmBalance').innerText = xlmBalance;
+        document.getElementById('usdcBalance').innerText = usdcBalance;
+      } catch (error) {
+        console.error("Error fetching balance",error);
+      }
+    });
+    
+    async function executeBlendTransaction(actionType, amount) {
+      if (!wallet) {
+        alert("Wallet not found. Please generate an address.");
+        return;
+      }
+      const sourceKeypair = StellarSdk.Keypair.fromSecret(wallet.secret);
+      const publicKey = sourceKeypair.publicKey();
+      let sourceAccount;
+      try {
+        sourceAccount = await rpc.getAccount(publicKey);
+      } catch (error) {
+        alert("Error loading account: " + error);
+        return;
+      }
+      let resultAreaMsg = "";
+      try {
+        const blendPool = new BlendSdk.PoolContract(poolContract);
+        const requestType = actionType === 'Deposit'
+          ? BlendSdk.RequestType.SupplyCollateral
+          : BlendSdk.RequestType.WithdrawCollateral;
+        const opXDR = StellarSdk.xdr.Operation.fromXDR(
+          blendPool.submit({
+            from: publicKey,
+            spender: publicKey,
+            to: publicKey,
+            requests: [{
+              amount: parseInt(amount, 10),
+              request_type: requestType,
+              address: usdcContract,
+            }],
+          }),
+          'base64'
+        );
+        const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+          fee: StellarSdk.BASE_FEE,
+          networkPassphrase: networkPassphrase,
+        })
+        .addOperation(opXDR)
+        .setTimeout(30)
+        .build();
+        // Prepare, sign, and send the transaction.
+        const preparedTx = await rpc.prepareTransaction(tx);
+        preparedTx.sign(sourceKeypair);
+        const txResult = await rpc.sendTransaction(preparedTx);
+        resultAreaMsg = "Transaction successful:\n" + JSON.stringify(txResult, null, 2);
+      } catch (error) {
+        console.error("Transaction error:", error);
+        resultAreaMsg = "Error: " + error.message;
+      }
+      alert(resultAreaMsg);
+    }
+    
+    // Deposit Button click handler
+    document.getElementById('depositButton').addEventListener('click', async () => {
+      let amount = document.getElementById('depositAmount').value;
+      if (!amount || amount <= 0) {
+        alert("Enter a valid deposit amount.");
+        return;
+      }
+      await executeBlendTransaction('Deposit', amount);
+      // Optionally refresh balances after the deposit.
+      document.getElementById('refreshBalance').click();
+    });
+    
+    // Withdraw Button click handler (withdraw all funds from blend)
+    document.getElementById('withdrawButton').addEventListener('click', async () => {
+      // For this demo, we assume the withdrawal amount is the total deposited collateral.
+      // In a real wallet you would need to query blend for your deposited balance.
+      // Here we simply use the current USDC balance as a dummy value.
+      const usdcBalance = document.getElementById('usdcBalance').innerText;
+      if (parseFloat(usdcBalance) <= 0) {
+        alert("No funds available in blend to withdraw.");
+        return;
+      }
+      await executeBlendTransaction('Withdraw', usdcBalance);
+      document.getElementById('refreshBalance').click();
+    });
+
+    document.getElementById('deleteButton').addEventListener('click', async () => {
+        if (confirm('Are you sure you want to delete this address?')) {
+            deleteWallet();
+            location.reload();
+        }
+    });
+    
+    // "Max" Link: Set deposit amount to available USDC balance
+    document.getElementById('maxLink').addEventListener('click', () => {
+      const usdcBalance = document.getElementById('usdcBalance').innerText;
+      document.getElementById('depositAmount').value = usdcBalance;
+    });
+    
+    // On page load, if wallet exists, show details.
+    window.addEventListener('load', () => {
+      if (wallet) {
+        renderWallet();
+      }
+    });
+  </script>
+</body>
+</html>

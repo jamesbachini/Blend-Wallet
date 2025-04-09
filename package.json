@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@blend-capital/blend-sdk": "^2.2.0",
+    "stellar-sdk": "^13.2.0"
+  },
+  "devDependencies": {
+    "webpack": "^5.98.0",
+    "webpack-cli": "^6.0.1"
+  }
+}
