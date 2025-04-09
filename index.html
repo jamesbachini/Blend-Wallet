@@ -274,8 +274,15 @@
         console.error("Error building transaction", error);
         return;
       }
+    }
 
-
+    async function refreshBalances() {
+      try {
+        const xlmBalance = await getTokenBalance(xlmContract);
+        document.getElementById('xlmBalance').innerText = xlmBalance;
+      } catch (error) {
+        console.error("Error fetching balance",error);
+      }
     }
 
     document.getElementById('refreshBalance').addEventListener('click', async () => {
@@ -283,14 +290,7 @@
         alert("Please generate an address first.");
         return;
       }
-      try {
-        const xlmBalance = await getTokenBalance(xlmContract);
-        //const usdcBalance = await getTokenBalance(usdcContract);
-        document.getElementById('xlmBalance').innerText = xlmBalance;
-        //document.getElementById('usdcBalance').innerText = usdcBalance;
-      } catch (error) {
-        console.error("Error fetching balance",error);
-      }
+      refreshBalances
     });
     
     async function executeBlendTransaction(actionType, amount) {
@@ -345,7 +345,6 @@
       alert(resultAreaMsg);
     }
     
-    // Deposit Button click handler
     document.getElementById('depositButton').addEventListener('click', async () => {
       let amount = document.getElementById('depositAmount').value;
       if (!amount || amount <= 0) {
@@ -353,21 +352,12 @@
         return;
       }
       await executeBlendTransaction('Deposit', amount);
-      // Optionally refresh balances after the deposit.
-      document.getElementById('refreshBalance').click();
+      refreshBalances();
     });
     
-    // Withdraw Button click handler (withdraw all funds from blend)
     document.getElementById('withdrawButton').addEventListener('click', async () => {
-      // For this demo, we assume the withdrawal amount is the total deposited collateral.
-      // In a real wallet you would need to query blend for your deposited balance.
-      // Here we simply use the current USDC balance as a dummy value.
-      const usdcBalance = document.getElementById('usdcBalance').innerText;
-      if (parseFloat(usdcBalance) <= 0) {
-        alert("No funds available in blend to withdraw.");
-        return;
-      }
-      await executeBlendTransaction('Withdraw', usdcBalance);
+      const xlmAmount = 1; // query balance
+      await executeBlendTransaction('Withdraw', xlmAmount);
       document.getElementById('refreshBalance').click();
     });
 
@@ -378,16 +368,15 @@
         }
     });
     
-    // "Max" Link: Set deposit amount to available USDC balance
     document.getElementById('maxLink').addEventListener('click', () => {
-      const usdcBalance = document.getElementById('usdcBalance').innerText;
-      document.getElementById('depositAmount').value = usdcBalance;
+      const xlmBalance = document.getElementById('xlmBalance').innerText;
+      document.getElementById('depositAmount').value = xlmBalance;
     });
     
-    // On page load, if wallet exists, show details.
     window.addEventListener('load', () => {
       if (wallet) {
         renderWallet();
+        refreshBalances();
       }
     });
   </script>
