@@ -133,6 +133,12 @@
             <p id="usdcBalance">0</p>
           </div>
         </div>
+        <div class="flex-row">
+          <div class="balance-item">
+            <p>BLEND DEPOSITS</p>
+            <p id="blendBalance">0</p>
+          </div>
+        </div>
         <button id="refreshBalance">Refresh Balance</button>
       </div>
       
@@ -280,6 +286,8 @@
       try {
         const xlmBalance = await getTokenBalance(xlmContract);
         document.getElementById('xlmBalance').innerText = xlmBalance;
+        const blendBalance = await getBlendBalance();
+        document.getElementById('blendBalance').innerText = blendBalance;
       } catch (error) {
         console.error("Error fetching balance",error);
       }
@@ -299,15 +307,13 @@
         return;
       }
       const sourceKeypair = StellarSdk.Keypair.fromSecret(wallet.secret);
-      const publicKey = sourceKeypair.publicKey();
       let sourceAccount;
       try {
-        sourceAccount = await rpc.getAccount(publicKey);
+        sourceAccount = await rpc.getAccount(wallet.publicKey);
       } catch (error) {
         alert("Error loading account: " + error);
         return;
       }
-      let resultAreaMsg = "";
       try {
         const blendPool = new BlendSdk.PoolContract(poolContract);
         const requestType = actionType === 'Deposit'
@@ -315,13 +321,13 @@
           : BlendSdk.RequestType.WithdrawCollateral;
         const opXDR = StellarSdk.xdr.Operation.fromXDR(
           blendPool.submit({
-            from: publicKey,
-            spender: publicKey,
-            to: publicKey,
+            from: wallet.publicKey,
+            spender: wallet.publicKey,
+            to: wallet.publicKey,
             requests: [{
-              amount: parseInt(amount, 10),
+              amount: parseInt(amount),
               request_type: requestType,
-              address: usdcContract,
+              address: xlmContract,
             }],
           }),
           'base64'
@@ -333,16 +339,37 @@
         .addOperation(opXDR)
         .setTimeout(30)
         .build();
-        // Prepare, sign, and send the transaction.
         const preparedTx = await rpc.prepareTransaction(tx);
         preparedTx.sign(sourceKeypair);
         const txResult = await rpc.sendTransaction(preparedTx);
-        resultAreaMsg = "Transaction successful:\n" + JSON.stringify(txResult, null, 2);
+        console.log(txResult)
       } catch (error) {
         console.error("Transaction error:", error);
-        resultAreaMsg = "Error: " + error.message;
       }
-      alert(resultAreaMsg);
+      alert("Transaction successful");
+    }
+
+    async function getBlendBalance() {
+      const contract = new StellarSdk.Contract(poolContract);
+      let sourceAccount = await rpc.getAccount(wallet.publicKey);
+      let tx;
+      try {
+        let operationArgs = [StellarSdk.nativeToScVal(wallet.publicKey, { type: "address" })];
+        tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+          fee: StellarSdk.BASE_FEE,
+          networkPassphrase: networkPassphrase,
+        })
+        .addOperation(contract.call('get_positions', ...operationArgs))
+        .setTimeout(30)
+        .build();
+        const simulationResult = await rpc.simulateTransaction(tx);
+        const decoded = StellarSdk.scValToNative(simulationResult.result?.retval);
+        const blendXLMBalance = decoded.collateral[0];
+        return blendXLMBalance;
+      } catch (error) {
+        console.error("Error building transaction", error);
+        return;
+      }
     }
     
     document.getElementById('depositButton').addEventListener('click', async () => {
@@ -356,7 +383,8 @@
     });
     
     document.getElementById('withdrawButton').addEventListener('click', async () => {
-      const xlmAmount = 1; // query balance
+      const xlmAmount = await getBlendBalance();
+      console.log('xlmAmount',xlmAmount);
       await executeBlendTransaction('Withdraw', xlmAmount);
       document.getElementById('refreshBalance').click();
     });
@@ -379,6 +407,10 @@
         refreshBalances();
       }
     });
+
+    setInterval(() => {
+      if (wallet) refreshBalances();
+    }, 15000)
   </script>
 </body>
 </html>
