@@ -4,9 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Blend Web Wallet</title>
-  <!-- Stellar SDK - same version used in both functionalities -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/stellar-sdk/13.1.0/stellar-sdk.min.js"></script>
-  <!-- Blend SDK bundle - adjust path as needed -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stellar-sdk/13.1.0/stellar-sdk.js"></script>
   <script src="dist/bundle.js"></script>
   <style>
     /* Global Styles */
@@ -61,13 +59,7 @@
       transition: background-color 0.3s ease;
     }
     button:hover {
-      background-color: #4a64a7;
-    }
-    .btn-secondary {
-      background-color: #6c757d;
-    }
-    .btn-secondary:hover {
-      background-color: #5a6268;
+      background-color: #3abd50a8;
     }
     .small-link {
       font-size: 0.85rem;
@@ -159,7 +151,7 @@
       <div class="wallet-section">
         <h2>Withdraw from Blend</h2>
         <p>This will withdraw all funds you have deposited.</p>
-        <button id="withdrawButton" class="btn-secondary">Withdraw All</button>
+        <button id="withdrawButton" class="btn">Withdraw All</button>
       </div>
 
       <button id="deleteButton" class="btn">Delete Wallet</button>
@@ -179,7 +171,6 @@
       : 'https://mainnet.sorobanrpc.com';
     const rpc = new StellarSdk.rpc.Server(rpcURL);
     let wallet = loadWallet();
-
 
     function saveWallet(wallet) {
       localStorage.setItem('stellarWallet', JSON.stringify(wallet));
@@ -263,24 +254,28 @@
       }
     });
 
-    async function getTokenBalance(contractId, publicKey) {
-        const contract = new StellarSdk.Contract(contractId);
+    async function getTokenBalance(contractId) {
+      const contract = new StellarSdk.Contract(contractId);
+      let sourceAccount = await rpc.getAccount(wallet.publicKey);
+      let tx;
+      try {
+        let operationArgs = [StellarSdk.nativeToScVal(wallet.publicKey, { type: "address" })];
+        tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+          fee: StellarSdk.BASE_FEE,
+          networkPassphrase: networkPassphrase,
+        })
+        .addOperation(contract.call('balance', ...operationArgs))
+        .setTimeout(30)
+        .build();
+        const simulationResult = await rpc.simulateTransaction(tx);
+        const decoded = StellarSdk.scValToNative(simulationResult.result?.retval).toString();
+        return decoded;
+      } catch (error) {
+        console.error("Error building transaction", error);
+        return;
+      }
 
-        try {
-            const result = await rpc.simulateTransaction({
-                contractId: contractId,
-                function: 'balance',
-                args: [new StellarSdk.Account(accountId).toScVal()],
-                networkPassphrase,
-            });
-            const balanceScVal = result.result?.retval;
-            if (!balanceScVal) throw new Error('No return value from contract simulation');
-            const balance = balanceScVal.toBigInt();
-            return balance;
-        } catch (err) {
-            console.error(`Error getting balance from ${contractId}:`, err);
-            return null;
-        }
+
     }
 
     document.getElementById('refreshBalance').addEventListener('click', async () => {
@@ -289,10 +284,10 @@
         return;
       }
       try {
-        const xlmBalance = await getTokenBalance(xlmContract, wallet.publicKey);
-        const usdcBalance = await getTokenBalance(usdcContract, wallet.publicKey);
+        const xlmBalance = await getTokenBalance(xlmContract);
+        //const usdcBalance = await getTokenBalance(usdcContract);
         document.getElementById('xlmBalance').innerText = xlmBalance;
-        document.getElementById('usdcBalance').innerText = usdcBalance;
+        //document.getElementById('usdcBalance').innerText = usdcBalance;
       } catch (error) {
         console.error("Error fetching balance",error);
       }
